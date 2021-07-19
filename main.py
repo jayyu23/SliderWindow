@@ -1,8 +1,14 @@
+"""
+Equalizer Class
+"""
+
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
+from scipy.fft import rfft, rfftfreq
 from scipy.interpolate import interp1d
-from scipy.io import savemat, loadmat
+from scipy.io import savemat, loadmat, wavfile
+
 import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -16,7 +22,7 @@ class TkWindow(tk.Frame):
         self.master.geometry('700x600')
         self.master.title('深聪EQ')
         self.options = {'padx': 5, 'pady': 5}
-        self.x_range = [2**i for i in range(5, 15)]  # Start at 16Hz (2^5), end at 16kHz (2^14)
+        self.x_range = [2**i for i in range(5, 15)]  # Start at 32Hz (2^5), end at 16kHz (2^14)
         self.y_range = [-17, 3]
         self.x_display_labels = [f"{s} Hz" if s < 1000 else f"{s/1000:.0f} kHz" for s in self.x_range]
 
@@ -32,7 +38,9 @@ class TkWindow(tk.Frame):
         self.x_vars = None
         self.y_vars = None
         self.curve = None
-        self.sample_size = 256
+        self.point_sample_size = 256
+        self.audio_file = 'audio_files/1001552.kai1-ji1.wav'
+        self.SAMPLE_RATE = None
 
         self.x_new = None
         self.y_new = None
@@ -72,7 +80,8 @@ class TkWindow(tk.Frame):
             name_label.pack(**self.options)
             slider.pack(**self.options)
             slider_frame.pack(side=tk.LEFT, expand=True, **self.options)
-        # Row 1: Edit pane
+
+        # Row 1: Edit pane (not used)
         self.edit_pane = tk.Frame(self.master, **self.options)
         self.edit_label = tk.Label(self.edit_pane, text="Edit")
         self.edit_choice = tk.StringVar()
@@ -90,7 +99,7 @@ class TkWindow(tk.Frame):
         self.update_button.pack(side=tk.LEFT, padx=10)
         # self.edit_pane.pack()
 
-        # Row 2: View button, labels display
+        # Row 2: View button, Export Button
         self.view_download_buttons = tk.Frame(self.master, bg=self.background)
         self.show_button = tk.Button(self.view_download_buttons, text=u"更新", padx=30,
                                      command=self.calculate_slider_values, bg=self.background, fg=self.foreground)
@@ -123,11 +132,18 @@ class TkWindow(tk.Frame):
 
     def fit_curve(self):
         # bounds = (min(self.x_vars), max(self.x_vars))
-        spline_f = interp1d(self.x_vars, self.y_vars, kind='cubic')
-        self.x_new = np.linspace(min(self.x_vars), max(self.x_vars), self.sample_size)
-        self.y_new = spline_f(self.x_new)
-        self.plt.plot(np.log2(self.x_vars), self.y_vars, 'o', color=self.points_color)
-        self.plt.plot(np.log2(self.x_new), self.y_new, '-', color=self.line_color)
+        # Get the audio and apply FFT
+        self.SAMPLE_RATE, signal = wavfile.read(self.audio_file)
+        yf = 10 * np.log10(rfft(signal, self.point_sample_size))
+        xf = rfftfreq(self.point_sample_size, 1 / self.SAMPLE_RATE)
+
+        spline_f = interp1d(self.x_vars, self.y_vars, kind='cubic', fill_value="extrapolate")
+        self.x_new = np.linspace(min(self.x_vars), max(self.x_vars), self.point_sample_size)
+        self.x_new = xf
+        y_graph = spline_f(self.x_new)
+        self.y_new = y_graph + yf
+        self.plt.plot(np.log2(self.x_vars + 0.001), self.y_vars, 'o', color=self.points_color) # So that can log2
+        self.plt.plot(np.log2(self.x_new + 0.001), y_graph, '-', color=self.line_color)
         self.export('export.mat')
 
     def __clear_plot(self):
@@ -135,11 +151,11 @@ class TkWindow(tk.Frame):
         self.plt = self.fig.add_subplot(1, 1, 1)
         self.plt.set_xlim(np.log2(min(self.x_range)) - 1, np.log2(max(self.x_range)) + 1)
         self.plt.set_ylim(self.y_range[0] - 1, self.y_range[1] + 1)
-        # self.plt.set_xlabel("Frequency Hz (log2)")
+        self.plt.set_xlabel("Frequency Hz (log2)")
         self.plt.set_title("Amplitude dB vs. Log2 Hertz", color=self.foreground)
         self.fig.set_facecolor(self.background)
         self.plt.set_facecolor(self.graph_bg)
-        print(dir(self.plt))
+
         self.plt.grid(c=self.grid_color)
         self.plt.tick_params(axis='both', colors=self.foreground)
         self.plt.spines['left'].set_color(self.foreground)

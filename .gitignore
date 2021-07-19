@@ -1,0 +1,8 @@
+audio_files/*
+shitong.zip
+export.*
+dist/*
+build/*
+*.wav
+*.spec
+*.ico
