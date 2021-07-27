@@ -18,8 +18,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
-
-
 class TkWindow(tk.Frame):
 
     def __init__(self, *args, **kwargs):
